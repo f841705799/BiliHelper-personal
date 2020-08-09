@@ -5,7 +5,7 @@
  *  Author: Lkeme
  *  License: The MIT License
  *  Email: Useri@live.cn
- *  Updated: 2019 ~ 2020
+ *  Updated: 2020 ~ 2021
  */
 
 namespace BiliHelper\Plugin;
@@ -65,7 +65,7 @@ class StormRaffle extends BaseRaffle
             'raffle_name' => '节奏风暴',
             'wait' => time()
         ];
-        Statistics::addPushList(self::ACTIVE_TITLE);
+        Statistics::addPushList($data['raffle_name']);
         array_push(self::$wait_list, $data);
         return true;
     }
@@ -88,7 +88,6 @@ class StormRaffle extends BaseRaffle
      * @use 创建抽奖任务
      * @param array $raffles
      * @return array
-     * @throws \Exception
      */
     protected static function createLottery(array $raffles): array
     {
@@ -96,7 +95,7 @@ class StormRaffle extends BaseRaffle
         $user_info = User::parseCookies();
         foreach ($raffles as $raffle) {
             self::$attempt = getenv('STORM_ATTEMPT') !== "" ? explode(',', getenv('STORM_ATTEMPT')) : [30, 50];
-            $num = random_int((int)self::$attempt[0], (int)self::$attempt[1]);
+            $num = mt_rand((int)self::$attempt[0], (int)self::$attempt[1]);
             $payload = [
                 'id' => $raffle['raffle_id'],
                 'roomid' => $raffle['room_id'],
@@ -108,27 +107,43 @@ class StormRaffle extends BaseRaffle
                 "visit_id" => ""
             ];
             for ($i = 1; $i < $num; $i++) {
-                $raw = Curl::post($url, Sign::api($payload));
+                $raw = Curl::post('app', $url, Sign::common($payload));
+                if (strpos((string)$raw, 'html') !== false) {
+                    Log::notice(self::formatInfo($raffle['raffle_id'], $num, '触发哔哩哔哩安全风控策略(412)'));
+                    break;
+                }
                 $de_raw = json_decode($raw, true);
+                // {"code":-412,"message":"请求被拦截","ttl":1,"data":null}
+                if ($de_raw['code'] == -412) {
+                    Log::notice(self::formatInfo($raffle['raffle_id'], $num, '触发哔哩哔哩安全风控策略(-412)'));
+                    break;
+                }
                 if ($de_raw['code'] == 429 || $de_raw['code'] == -429) {
                     Log::notice(self::formatInfo($raffle['raffle_id'], $num, '节奏风暴未实名或异常验证码'));
                     break;
                 }
-                if (isset($de_raw['data']) && empty($de_raw['data'])) {
-                    Log::notice(self::formatInfo($raffle['raffle_id'], $num, '节奏风暴在小黑屋'));
-                    break;
-                }
                 if ($de_raw['code'] == 0) {
-                    Statistics::addSuccessList(self::ACTIVE_TITLE);
-                    Log::notice(self::formatInfo($raffle['raffle_id'], $num, $de_raw['data']['mobile_content']));
+                    $data = $de_raw['data'];
+                    Statistics::addSuccessList($raffle['raffle_name']);
+                    Log::notice(self::formatInfo($raffle['raffle_id'], $num, $data['mobile_content']));
+                    Statistics::addProfitList($data['title'] . '-' . $data['gift_name'], $data['gift_num']);
                     break;
                 }
-                if ($de_raw['msg'] == '节奏风暴不存在') {
-                    Log::notice(self::formatInfo($raffle['raffle_id'], $num, '节奏风暴已结束'));
+                if (!isset($de_raw['msg'])) {
+                    Log::notice(self::formatInfo($raffle['raffle_id'], $num, $de_raw));
+                    break;
+                }
+                if ($de_raw['msg'] == '节奏风暴不存在' || $de_raw['msg'] == '节奏风暴抽奖过期' || $de_raw['msg'] == '没抢到') {
+                    Log::notice(self::formatInfo($raffle['raffle_id'], $num, '节奏风暴已经结束'));
                     break;
                 }
                 if ($de_raw['msg'] == '已经领取奖励') {
                     Log::notice(self::formatInfo($raffle['raffle_id'], $num, '节奏风暴已经领取'));
+                    break;
+                }
+                if (isset($de_raw['data']) && empty($de_raw['data'])) {
+                    Log::debug(self::formatInfo($raffle['raffle_id'], $num, '节奏风暴在小黑屋'));
+                    self::pauseLock();
                     break;
                 }
                 if ($de_raw['msg'] == '你错过了奖励，下次要更快一点哦~') {

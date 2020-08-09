@@ -5,7 +5,7 @@
  *  Author: Lkeme
  *  License: The MIT License
  *  Email: Useri@live.cn
- *  Updated: 2019 ~ 2020
+ *  Updated: 2020 ~ 2021
  */
 
 namespace BiliHelper\Plugin;
@@ -18,7 +18,7 @@ class MaterialObject
 {
     use TimeLock;
 
-    private static $discard_aid_list = [];
+    private static $invalid_aids = [];
     private static $start_aid = 0;
     private static $end_aid = 0;
 
@@ -27,100 +27,169 @@ class MaterialObject
         if (getenv('USE_MO') == 'false') {
             return;
         }
+        self::setPauseStatus();
         if (self::getLock() > time()) {
             return;
         }
-        // 计算AID TODO 待优化
-        self::calculateAid(150, 550);
-        self::drawLottery();
-
-        self::setLock(random_int(5, 10) * 60);
+        // TODO 优化计算AID算法
+        self::calcAid(470, 770);
+        $lottery_list = self::fetchLottery();
+        self::drawLottery($lottery_list);
+        self::setLock(mt_rand(6, 10) * 60);
     }
 
+
     /**
-     * @use 实物抽奖
+     * @use 过滤抽奖Title
+     * @param string $title
      * @return bool
      */
-    protected static function drawLottery(): bool
+    private static function filterTitleWords(string $title): bool
     {
-        $block_key_list = ['测试', '加密', 'test', 'TEST', '钓鱼', '炸鱼', '调试'];
-        $flag = 5;
-
-        for ($i = self::$start_aid; $i < self::$end_aid; $i++) {
-            if (!$flag) {
-                break;
+        $sensitive_words = [
+            '测试', '加密', 'test', 'TEST', '钓鱼', '炸鱼', '调试', "123", "1111", "测试", "測試", "Test",
+            "测一测", "ce-shi", "test", "T-E-S-T", "lala", "我是抽奖标题", "压测", "測一測", "t-e-s-t"
+        ];
+        foreach ($sensitive_words as $word) {
+            if (strpos($title, $word) !== false) {
+                return true;
             }
-            // 在丢弃列表里 跳过
-            if (in_array($i, self::$discard_aid_list)) {
+        }
+        return false;
+    }
+
+
+    /**
+     * @use 抽奖盒子状态
+     * @param int $aid
+     * @param string $reply
+     * @return array|bool|mixed
+     */
+    private static function boxStatus(int $aid, $reply = 'bool')
+    {
+        // $url = 'https://api.live.bilibili.com/lottery/v1/box/getStatus';
+        $url = 'https://api.live.bilibili.com/xlive/lottery-interface/v2/Box/getStatus';
+        $payload = [
+            'aid' => $aid,
+        ];
+        $raw = Curl::get('pc', $url, $payload);
+        $de_raw = json_decode($raw, true);
+        // {"code":0,"data":null,"message":"ok","msg":"ok"}
+        // {"code":0,"data":{"title":"荣耀宝箱抽奖","rule":"a 抽奖时间按如下规则抽取一次，重复无效。\nb 获奖者需要再获奖名单公布后一周内反馈姓名、邮寄地址、联系方式，因获奖者逾期查看获奖名单、逾期提交个人资料或个人资料有误，将视为自动放弃获奖资格及由此产生的权利。","current_round":2,"typeB":[{"startTime":"2020-05-18 18:30:00","imgUrl":"https://i0.hdslb.com/bfs/live/f600b89f2c2550b600612feba90e39901a9f027c.jpg","join_start_time":1589796000,"join_end_time":1589797800,"status":4,"list":[{"jp_name":"荣耀路由3","jp_num":"1","jp_id":3181,"jp_type":2,"ex_text":"","jp_pic":"https://i0.hdslb.com/bfs/live/f600b89f2c2550b600612feba90e39901a9f027c.jpg"}],"round_num":1},{"startTime":"2020-05-18 19:00:00","imgUrl":"https://i0.hdslb.com/bfs/live/f600b89f2c2550b600612feba90e39901a9f027c.jpg","join_start_time":1589797800,"join_end_time":1589799600,"status":0,"list":[{"jp_name":"荣耀路由3","jp_num":"1","jp_id":3182,"jp_type":2,"ex_text":"","jp_pic":"https://i0.hdslb.com/bfs/live/f600b89f2c2550b600612feba90e39901a9f027c.jpg"}],"round_num":2},{"startTime":"2020-05-18 19:30:00","imgUrl":"https://i0.hdslb.com/bfs/live/9fcde6f26a546b9dfb5ffc7a0c4f4503a05e16f2.jpg","join_start_time":1589799600,"join_end_time":1589801400,"status":-1,"list":[{"jp_name":"荣耀平板V6","jp_num":"1","jp_id":3183,"jp_type":2,"ex_text":"","jp_pic":"https://i0.hdslb.com/bfs/live/9fcde6f26a546b9dfb5ffc7a0c4f4503a05e16f2.jpg"}],"round_num":3},{"startTime":"2020-05-18 20:00:00","imgUrl":"https://i0.hdslb.com/bfs/live/9fcde6f26a546b9dfb5ffc7a0c4f4503a05e16f2.jpg","join_start_time":1589801400,"join_end_time":1589803200,"status":-1,"list":[{"jp_name":"荣耀平板V6","jp_num":"1","jp_id":3184,"jp_type":2,"ex_text":"","jp_pic":"https://i0.hdslb.com/bfs/live/9fcde6f26a546b9dfb5ffc7a0c4f4503a05e16f2.jpg"}],"round_num":4},{"startTime":"2020-05-18 20:30:00","imgUrl":"https://i0.hdslb.com/bfs/live/9fcde6f26a546b9dfb5ffc7a0c4f4503a05e16f2.jpg","join_start_time":1589803200,"join_end_time":1589805000,"status":-1,"list":[{"jp_name":"荣耀平板V6","jp_num":"1","jp_id":3185,"jp_type":2,"ex_text":"","jp_pic":"https://i0.hdslb.com/bfs/live/9fcde6f26a546b9dfb5ffc7a0c4f4503a05e16f2.jpg"}],"round_num":5},{"startTime":"2020-05-18 21:00:00","imgUrl":"https://i0.hdslb.com/bfs/live/73db69bd5a9e5dedb7d2f32d72fd6248b860e238.jpg","join_start_time":1589805000,"join_end_time":1589806800,"status":-1,"list":[{"jp_name":"荣耀MagicBook Pro","jp_num":"1","jp_id":3186,"jp_type":2,"ex_text":"","jp_pic":"https://i0.hdslb.com/bfs/live/73db69bd5a9e5dedb7d2f32d72fd6248b860e238.jpg"}],"round_num":6},{"startTime":"2020-05-18 22:00:00","imgUrl":"https://i0.hdslb.com/bfs/live/4dba1e8b58c174d5e2311de339b1e02a3ac77a98.jpg","join_start_time":1589806800,"join_end_time":1589810400,"status":-1,"list":[{"jp_name":"荣耀智慧屏新品，荣耀MagicBook Pro，荣耀平板V6，荣耀路由3","jp_num":"1","jp_id":3187,"jp_type":2,"ex_text":"","jp_pic":"https://i0.hdslb.com/bfs/live/4dba1e8b58c174d5e2311de339b1e02a3ac77a98.jpg"}],"round_num":7}],"activity_pic":"https://i0.hdslb.com/bfs/live/c3ed87683f6e87d256d1f5fdddbfb220fc4c2cdf.png","activity_id":556,"weight":20,"background":"https://i0.hdslb.com/bfs/live/84cd59bcb1e977359df618dbeb0f7828751f457c.png","title_color":"#FFFFFF","closeable":0,"jump_url":"https://live.bilibili.com/p/html/live-app-treasurebox/index.html?is_live_half_webview=1\u0026hybrid_biz=live-app-treasurebox\u0026hybrid_rotate_d=1\u0026hybrid_half_ui=1,3,100p,70p,0,0,30,100;2,2,375,100p,0,0,30,100;3,3,100p,70p,0,0,30,100;4,2,375,100p,0,0,30,100;5,3,100p,70p,0,0,30,100;6,3,100p,70p,0,0,30,100;7,3,100p,70p,0,0,30,100\u0026aid=556"},"message":"","msg":""}
+        switch ($reply) {
+            // 等于0是有抽奖返回false
+            case 'bool':
+                if (!is_null($de_raw['data'])) {
+                    return false;
+                }
+                return true;
+            case 'array':
+                if (!is_null($de_raw['data'])) {
+                    return $de_raw;
+                }
+                return [];
+            default:
+                return $de_raw;
+        }
+    }
+
+
+    /**
+     * @use 获取抽奖
+     * @return array
+     */
+    private static function fetchLottery(): array
+    {
+        $lottery_list = [];
+        $max_probe = 10;
+        $probes = range(self::$start_aid, self::$end_aid);
+        foreach ($probes as $probe_aid) {
+            // 最大试探
+            if ($max_probe == 0) break;
+            // 无效列表
+            if (in_array($probe_aid, self::$invalid_aids)) {
                 continue;
             }
+            // 试探
+            $response = self::boxStatus($probe_aid, 'array');
+            if (empty($response)) {
+                $max_probe--;
+                continue;
+            }
+            $rounds = $response['data']['typeB'];
+            $last_round = end($rounds);
+            // 最后抽奖轮次无效
+            if ($last_round['join_end_time'] < time()) {
+                array_push(self::$invalid_aids, $probe_aid);
+                continue;
+            }
+            // 过滤敏感词
+            $title = $response['data']['title'];
+            if (self::filterTitleWords($title)) {
+                array_push(self::$invalid_aids, $probe_aid);
+                continue;
+            }
+            // 过滤抽奖轮次
+            $round_num = self::filterRound($rounds);
+            if ($round_num == 0) {
+                continue;
+            }
+            array_push($lottery_list, [
+                'aid' => $probe_aid,
+                'num' => $round_num,
+            ]);
+        }
+        return $lottery_list;
+    }
 
+
+    /**
+     * @use 过滤轮次
+     * @param array $rounds
+     * @return int
+     */
+    private static function filterRound(array $rounds): int
+    {
+        foreach ($rounds as $round) {
+            $join_start_time = $round['join_start_time'];
+            $join_end_time = $round['join_end_time'];
+            if ($join_end_time > time() && time() > $join_start_time) {
+                $status = $round['status'];
+                /*
+                 * 3 结束 1 抽过 -1 未开启 0 可参与
+                 */
+                if ($status == 0) {
+                    return $round['round_num'];
+                }
+            }
+        }
+        return 0;
+    }
+
+
+    /**
+     * @use 抽奖
+     * @param array $lottery_list
+     * @return bool
+     */
+    private static function drawLottery(array $lottery_list): bool
+    {
+        foreach ($lottery_list as $lottery) {
+            $aid = $lottery['aid'];
+            $num = $lottery['num'];
+            Log::notice("实物抽奖 {$aid} 轮次 {$num} 可参与抽奖~");
+            // $url = 'https://api.live.bilibili.com/lottery/v1/Box/draw';
+            $url = 'https://api.live.bilibili.com/xlive/lottery-interface/v2/Box/draw';
             $payload = [
-                'aid' => $i,
+                'aid' => $aid,
+                'number' => $num,
             ];
-            $url = 'https://api.live.bilibili.com/lottery/v1/box/getStatus';
-            // 请求 && 解码
-            $raw = Curl::get($url, Sign::api($payload));
+            $raw = Curl::get('pc', $url, $payload);
             $de_raw = json_decode($raw, true);
-            // -403 没有抽奖
-            if ($de_raw['code'] != '0') {
-                $flag--;
-                continue;
-            }
-            // 如果最后一个结束时间已过 加入丢弃
-            $lotterys = $de_raw['data']['typeB'];
-            $total = count($lotterys);
-            if ($lotterys[$total - 1]['join_end_time'] < time()) {
-                array_push(self::$discard_aid_list, $i);
-                continue;
-            }
-
-            // 如果存在敏感词 加入丢弃
-            $title = $de_raw['data']['title'];
-            foreach ($block_key_list as $block_key) {
-                if (strpos($title, $block_key) !== false) {
-                    array_push(self::$discard_aid_list, $i);
-                    continue;
-                }
-            }
-
-            $num = 1;
-            foreach ($lotterys as $lottery) {
-                $join_end_time = $lottery['join_end_time'];
-                $join_start_time = $lottery['join_start_time'];
-
-                if ($join_end_time > time() && time() > $join_start_time) {
-                    switch ($lottery['status']) {
-                        case 3:
-                            Log::info("实物[{$i}]抽奖: 当前轮次已经结束!");
-                            break;
-                        case 1:
-                            Log::info("实物[{$i}]抽奖: 当前轮次已经抽过了!");
-                            break;
-                        case -1:
-                            Log::info("实物[{$i}]抽奖: 当前轮次暂未开启!");
-                            break;
-                        case 0:
-                            Log::info("实物[{$i}]抽奖: 当前轮次正在抽奖中!");
-
-                            $payload = [
-                                'aid' => $i,
-                                'number' => $num,
-                            ];
-                            $raw = Curl::get('https://api.live.bilibili.com/lottery/v1/box/draw', Sign::api($payload));
-                            $de_raw = json_decode($raw, true);
-
-                            if ($de_raw['code'] == 0) {
-                                Log::notice("实物[{$i}]抽奖: 成功!");
-                            }
-                            $num++;
-                            break;
-
-                        default:
-                            Log::info("实物[{$i}]抽奖: 当前轮次状态码[{$lottery['status'] }]未知!");
-                            break;
-                    }
-                }
+            if ($de_raw['code'] == 0) {
+                Log::notice("实物抽奖 {$aid} 轮次 {$num} 参与抽奖成功~");
+            } else {
+                Log::notice("实物抽奖 {$aid} 轮次 {$num} {$de_raw['msg']}~");
             }
         }
         return true;
@@ -128,22 +197,20 @@ class MaterialObject
 
 
     /**
-     * @use 计算开始结束的AID
+     * @use 计算Aid
      * @param $min
      * @param $max
      * @return bool
-     * @throws \Exception
      */
-    private static function calculateAid($min, $max): bool
+    private static function calcAid($min, $max): bool
     {
         if (self::$end_aid != 0 && self::$start_aid != 0) {
             return false;
         }
-
-        while (1) {
+        while (true) {
             $middle = round(($min + $max) / 2);
-            if (self::aidPost($middle)) {
-                if (self::aidPost($middle + random_int(0, 3))) {
+            if (self::boxStatus($middle)) {
+                if (self::boxStatus($middle + mt_rand(0, 3))) {
                     $max = $middle;
                 } else {
                     $min = $middle;
@@ -155,31 +222,9 @@ class MaterialObject
                 break;
             }
         }
-
-        self::$start_aid = $min - random_int(30, 40);
-        self::$end_aid = $min + random_int(30, 40);
+        self::$start_aid = $min - mt_rand(15, 30);
+        self::$end_aid = $min + mt_rand(15, 30);
         Log::info("实物抽奖起始值[" . self::$start_aid . "]，结束值[" . self::$end_aid . "]");
-        return true;
-    }
-
-    /**
-     * @use Aid 请求
-     * @param $aid
-     * @return bool
-     */
-    private static function aidPost($aid): bool
-    {
-        $payload = [
-            'aid' => $aid,
-        ];
-        $raw = Curl::get('https://api.live.bilibili.com/lottery/v1/box/getStatus', Sign::api($payload));
-        $de_raw = json_decode($raw, true);
-
-        // 等于0是有抽奖返回false
-        if ($de_raw['code'] == 0) {
-            return false;
-        }
-        // 没有抽奖
         return true;
     }
 }

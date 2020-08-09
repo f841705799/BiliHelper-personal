@@ -5,7 +5,7 @@
  *  Author: Lkeme
  *  License: The MIT License
  *  Email: Useri@live.cn
- *  Updated: 2019 ~ 2020
+ *  Updated: 2020 ~ 2021
  */
 
 namespace BiliHelper\Plugin;
@@ -17,6 +17,7 @@ use BiliHelper\Util\TimeLock;
 class AwardRecord
 {
     use TimeLock;
+
     private static $raffle_lock = 0;
     private static $raffle_list = [];
     private static $anchor_lock = 0;
@@ -48,11 +49,11 @@ class AwardRecord
      */
     private static function anchorAward()
     {
+        $url = 'https://api.live.bilibili.com/xlive/lottery-interface/v1/Anchor/AwardRecord';
         $payload = [
             'page' => '1',
         ];
-        $url = 'https://api.live.bilibili.com/xlive/lottery-interface/v1/Anchor/AwardRecord';
-        $raw = Curl::get($url, Sign::api($payload));
+        $raw = Curl::get('app', $url, Sign::common($payload));
         $de_raw = json_decode($raw, true);
         // 防止异常
         if (!isset($de_raw['data']) || !isset($de_raw['data']['list'])) {
@@ -75,6 +76,18 @@ class AwardRecord
             }
             array_push(self::$anchor_list, $anchor['id']);
         }
+        // 处理取关操作
+        foreach (AnchorRaffle::$wait_un_follows as $wait_un_follow) {
+            if ($wait_un_follow['time'] > time()) {
+                continue;
+            }
+            if (in_array($wait_un_follow['anchor_id'], self::$anchor_list)) {
+                AnchorRaffle::delToGroup($wait_un_follow['uid'], $wait_un_follow['anchor_id'], false);
+            }else{
+                AnchorRaffle::delToGroup($wait_un_follow['uid'], $wait_un_follow['anchor_id'], true);
+            }
+        }
+
         self::$anchor_lock = time() + 6 * 60 * 60;
     }
 
@@ -84,12 +97,12 @@ class AwardRecord
      */
     private static function raffleAward()
     {
+        $url = 'https://api.live.bilibili.com/lottery/v1/award/award_list';
         $payload = [
             'page' => '1',
             'month' => '',
         ];
-        $url = 'https://api.live.bilibili.com/lottery/v1/award/award_list';
-        $raw = Curl::get($url, Sign::api($payload));
+        $raw = Curl::get('app', $url, Sign::common($payload));
         $de_raw = json_decode($raw, true);
 
         // 防止异常
@@ -108,7 +121,7 @@ class AwardRecord
             // 范围
             if ($day <= 2 && empty($raffle['update_time'])) {
                 $info = $raffle['gift_name'] . 'x' . $raffle['gift_num'];
-                Log::notice("实物奖励于" . $raffle['end_time'] . "获奖: {$info} ,请留意查看...");
+                Log::notice("实物奖励于" . $raffle['create_time'] . "获奖: {$info} ,请留意查看...");
                 Notice::push('raffle', $info);
             }
             array_push(self::$raffle_list, $raffle['id']);
@@ -122,14 +135,14 @@ class AwardRecord
      */
     private static function giftAward()
     {
+        // Web V3 Notice
+        $url = 'https://api.live.bilibili.com/xlive/lottery-interface/v3/smalltv/Notice';
         $payload = [
             'type' => 'type',
             'raffleId' => 'raffle_id'
         ];
-        // Web V3 Notice
-        $url = 'https://api.live.bilibili.com/xlive/lottery-interface/v3/smalltv/Notice';
         // 请求 && 解码
-        $raw = Curl::get($url, Sign::api($payload));
+        $raw = Curl::get('app', $url, Sign::common($payload));
         $de_raw = json_decode($raw, true);
     }
 }

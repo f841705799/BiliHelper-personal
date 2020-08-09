@@ -5,7 +5,7 @@
  *  Author: Lkeme
  *  License: The MIT License
  *  Email: Useri@live.cn
- *  Updated: 2019 ~ 2020
+ *  Updated: 2020 ~ 2021
  */
 
 namespace BiliHelper\Plugin;
@@ -23,26 +23,34 @@ class Heart
         if (self::getLock() > time()) {
             return;
         }
-
-        self::pc();
-        self::mobile();
-
+        self::setPauseStatus();
+        self::webHeart();
+        self::appHeart();
         self::setLock(5 * 60);
     }
 
     /**
-     * @use pc端心跳
+     * @use Web 心跳
      */
-    protected static function pc()
+    protected static function webHeart()
     {
+        User::webGetUserInfo();
+        $url = 'https://api.live.bilibili.com/User/userOnlineHeart';
+        $user_info = User::parseCookies();
         $payload = [
+            'csrf' => $user_info['token'],
+            'csrf_token' => $user_info['token'],
             'room_id' => getenv('ROOM_ID'),
+            '_' => time() * 1000,
         ];
-        $data = Curl::post('https://api.live.bilibili.com/User/userOnlineHeart', Sign::api($payload));
+        $headers = [
+            'Referer' => 'https://live.bilibili.com/' . getenv('ROOM_ID')
+        ];
+        $data = Curl::post('app', $url, $payload, $headers);
         $data = json_decode($data, true);
 
         if (isset($data['code']) && $data['code']) {
-            Log::warning('WEB端 直播间心跳停止惹～', ['msg' => $data['message']]);
+            Log::warning('WEB端 发送心跳异常!', ['msg' => $data['message']]);
         } else {
             Log::info('WEB端 发送心跳正常!');
         }
@@ -51,16 +59,18 @@ class Heart
     /**
      * @use 手机端心跳
      */
-    protected static function mobile()
+    protected static function appHeart()
     {
+        User::appGetUserInfo();
+        $url = 'https://api.live.bilibili.com/mobile/userOnlineHeart';
         $payload = [
             'room_id' => getenv('ROOM_ID'),
         ];
-        $data = Curl::post('https://api.live.bilibili.com/mobile/userOnlineHeart', Sign::api($payload));
+        $data = Curl::post('app', $url, Sign::common($payload));
         $data = json_decode($data, true);
 
         if (isset($data['code']) && $data['code']) {
-            Log::warning('APP端 直播间心跳停止惹～', ['msg' => $data['message']]);
+            Log::warning('APP端 发送心跳异常!', ['msg' => $data['message']]);
         } else {
             Log::info('APP端 发送心跳正常!');
         }

@@ -5,14 +5,10 @@
  *  Author: Lkeme
  *  License: The MIT License
  *  Email: Useri@live.cn
- *  Updated: 2019 ~ 2020
+ *  Updated: 2020 ~ 2021
  */
 
 namespace BiliHelper\Plugin;
-
-use BiliHelper\Core\Log;
-use BiliHelper\Core\Curl;
-use BiliHelper\Util\TimeLock;
 
 class DataTreating
 {
@@ -31,19 +27,19 @@ class DataTreating
             return;
         }
         switch ($data['raffle_type']) {
-            case "storm":
+            case 'storm':
                 // 风暴
                 StormRaffle::pushToQueue($info);
                 break;
-            case "raffle":
+            case 'raffle':
                 // 礼物
                 GiftRaffle::pushToQueue($info);
                 break;
-            case "guard":
+            case 'guard':
                 // 舰长
                 GuardRaffle::pushToQueue($info);
                 break;
-            case "small_tv":
+            case 'small_tv':
                 // 电视
                 GiftRaffle::pushToQueue($info);
                 break;

@@ -6,7 +6,7 @@
  *  Author: Lkeme
  *  License: The MIT License
  *  Email: Useri@live.cn
- *  Updated: 2019 ~ 2020
+ *  Updated: 2020 ~ 2021
  */
 
 namespace BiliHelper\Plugin;
@@ -22,7 +22,7 @@ abstract class BaseRaffle
     protected static $wait_list;
     protected static $finish_list;
     protected static $all_list;
-    protected static $room_stats = ['room_id' => 0, 'status' => false];
+    protected static $banned_rids = [];
 
     public static function run()
     {
@@ -32,6 +32,7 @@ abstract class BaseRaffle
         if (static::getLock() > time()) {
             return;
         }
+        static::setPauseStatus();
         static::startLottery();
     }
 
@@ -62,7 +63,7 @@ abstract class BaseRaffle
             }
             array_push($room_list, $raffle['room_id']);
             array_push($raffle_list, $raffle);
-            Statistics::addJoinList(static::ACTIVE_TITLE);
+            Statistics::addJoinList($raffle['raffle_name']);
         }
         if (count($raffle_list) && count($room_list)) {
             $room_list = array_unique($room_list);
@@ -82,13 +83,14 @@ abstract class BaseRaffle
      */
     protected static function check(int $room_id): array
     {
+        $url = 'https://api.live.bilibili.com/xlive/lottery-interface/v1/lottery/getLotteryInfo';
         $payload = [
             'roomid' => $room_id
         ];
-        $url = 'https://api.live.bilibili.com/xlive/lottery-interface/v1/lottery/getLotteryInfo';
-        $raw = Curl::get($url, Sign::api($payload));
+        $raw = Curl::get('app', $url, Sign::common($payload));
         $de_raw = json_decode($raw, true);
         if (!isset($de_raw['data']) || $de_raw['code']) {
+            // TODO 请求被拦截 412
             Log::error("获取抽奖数据错误，{$de_raw['message']}");
             return [];
         }
@@ -154,8 +156,8 @@ abstract class BaseRaffle
         if (in_array($lid, static::$all_list)) {
             return true;
         }
-        if (count(static::$all_list) > 2000) {
-            static::$all_list = [];
+        if (count(static::$all_list) > 4000) {
+            static::$all_list = array_values(array_splice(static::$all_list, 2000, 2000));
         }
         if ($filter) {
             array_push(static::$all_list, $lid);
@@ -174,21 +176,28 @@ abstract class BaseRaffle
         if (getenv(static::ACTIVE_SWITCH) == 'false') {
             return false;
         }
-        // 去重
-        if (static::toRepeatLid($data['lid'], false)) {
+        // 黑屋
+        if (static::getPauseStatus()) {
             return false;
         }
-        // 钓鱼&&防止重复请求
-        if ($data['rid'] != static::$room_stats['room_id']) {
-            static::$room_stats = ['room_id' => $data['rid'], 'status' => Live::fishingDetection($data['rid'])];
+        $current_rid = (int)$data['rid'];
+        // 去重
+        if (static::toRepeatLid($current_rid, false)) {
+            return false;
         }
-        if (static::$room_stats['status']) {
+        // 拒绝钓鱼 防止重复请求
+        if (in_array($current_rid, static::$banned_rids)) {
+            return false;
+        }
+        $banned_status = Live::fishingDetection($current_rid);
+        if ($banned_status) {
+            array_push(static::$banned_rids, $current_rid);
             return false;
         }
         // 实际检测
-        $raffles_info = static::check($data['rid']);
+        $raffles_info = static::check($current_rid);
         if (!empty($raffles_info)) {
-            static::parseLotteryInfo($data['rid'], $raffles_info);
+            static::parseLotteryInfo($current_rid, $raffles_info);
         }
         $wait_num = count(static::$wait_list);
         if ($wait_num > 10 && ($wait_num % 2)) {
@@ -196,7 +205,4 @@ abstract class BaseRaffle
         }
         return true;
     }
-
 }
-
-

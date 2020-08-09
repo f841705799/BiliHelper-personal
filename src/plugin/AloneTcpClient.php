@@ -5,13 +5,12 @@
  *  Author: Lkeme
  *  License: The MIT License
  *  Email: Useri@live.cn
- *  Updated: 2019 ~ 2020
+ *  Updated: 2020 ~ 2021
  */
 
 namespace BiliHelper\Plugin;
 
 use BiliHelper\Core\Log;
-use BiliHelper\Core\Curl;
 use BiliHelper\Util\TimeLock;
 
 use Exception;
@@ -20,11 +19,13 @@ use Socket\Raw\Factory;
 class AloneTcpClient
 {
     use TimeLock;
+
     private static $heart_lock = 0;
     private static $client = null;
     private static $server_addr = null;
     private static $server_key = null;
     private static $socket_timeout = 0;
+    private static $max_errors_num = 0; // 最大连续错误5次
 
     /**
      * @use 入口
@@ -34,6 +35,7 @@ class AloneTcpClient
         if (self::getLock() > time() || getenv('USE_ALONE_SERVER') == 'false') {
             return;
         }
+        self::setPauseStatus();
         self::init();
         self::heartBeat();
         self::receive();
@@ -123,7 +125,7 @@ class AloneTcpClient
         try {
             while (self::$client->selectRead(self::$socket_timeout)) {
                 $data = self::$client->read($length);
-                if (!$data) {
+                if (!$data || strlen($data) > 65535 || strlen($data) < 0) {
                     throw new Exception("Connection failure");
                 }
                 if ($length == 4) $data = self::unPackMsg($data);
@@ -170,7 +172,7 @@ class AloneTcpClient
                 Log::info("连接到 {$socket->getPeerName()} 推送服务器");
             } catch (Exception $e) {
                 Log::error("连接到推送服务器失败, {$e->getMessage()}");
-                self::setLock( 60);
+                self::setLock(60);
             }
         }
     }
@@ -219,22 +221,45 @@ class AloneTcpClient
         switch ($data_type) {
             case 'raffle':
                 // 抽奖推送
-                // Log::notice($body);
+                Log::debug("(receive={$body})");
                 DataTreating::distribute($raw_data['data']);
                 break;
             case 'entered':
                 // 握手确认
                 Log::info("确认到推送服务器 {$raw_data['type']}");
+                self::$max_errors_num = 0;
                 break;
             case 'error':
-                // 致命错误
-                Log::error("推送服务器发生致命错误 {$raw_data['data']['msg']}");
-                exit();
+                // 产生错误
+                Log::error("推送服务器异常 {$raw_data['data']['msg']}, 程序错误5次后将挂起, 请手动关闭!");
+                if (self::$max_errors_num == 5) {
+                    // KEY到期推送提醒
+                    Notice::push('key_expired', '');
+                    // 程序挂起 防止systemd无限重启导致触发过多推送提醒
+                    sleep(86400);
+                    exit();
+                }
+                self::$max_errors_num += 1;
                 break;
             case 'heartbeat':
                 // 服务端心跳推送
                 // Log::info("推送服务器心跳推送 {$body}");
                 Log::debug("(heartbeat={$raw_data['data']['now']})");
+                break;
+            case 'sleep':
+                // 服务器发布命令
+                Log::warning("服务器发布休眠命令 {$raw_data['data']['msg']}");
+                sleep($raw_data['data']['hour']);
+                break;
+            case 'update':
+                // 服务器发布命令
+                Log::notice("服务器发布更新命令 {$raw_data['data']['msg']}");
+                Notice::push('update', $raw_data['data']['msg']);
+                break;
+            case 'exit':
+                // 服务器发布命令
+                Log::error("服务器发布退出命令 {$raw_data['data']['msg']}");
+                exit();
                 break;
             default:
                 // 未知信息

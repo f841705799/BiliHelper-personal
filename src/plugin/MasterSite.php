@@ -5,7 +5,7 @@
  *  Author: Lkeme
  *  License: The MIT License
  *  Email: Useri@live.cn
- *  Updated: 2019 ~ 2020
+ *  Updated: 2020 ~ 2021
  */
 
 namespace BiliHelper\Plugin;
@@ -24,10 +24,10 @@ class MasterSite
             return;
         }
         if (self::watchAid() && self::shareAid() && self::coinAdd()) {
-            self::setLock( 24 * 60 * 60);
+            self::setLock(self::timing(10));
             return;
         }
-        self::setLock( 3600);
+        self::setLock(3600);
     }
 
 
@@ -52,7 +52,7 @@ class MasterSite
             'Referer' => "https://www.bilibili.com/video/av{$aid}",
             'User-Agent' => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.81 Safari/537.36",
         ];
-        $raw = Curl::post($url, Sign::api($payload), $headers);
+        $raw = Curl::post('app', $url, Sign::common($payload), $headers);
         $de_raw = json_decode($raw, true);
         if ($de_raw['code'] == 0) {
             Log::notice("主站任务: av{$aid}投币成功!");
@@ -72,10 +72,10 @@ class MasterSite
     {
         $url = "https://api.bilibili.com/x/member/web/coin/log";
         $payload = [];
-        $raw = Curl::get($url, Sign::api($payload));
+        $raw = Curl::get('pc', $url, $payload);
         $de_raw = json_decode($raw, true);
 
-        $logs = $de_raw['data']['list'];
+        $logs = isset($de_raw['data']['list']) ? $de_raw['data']['list'] : [];
         $coins = 0;
         foreach ($logs as $log) {
             $log_ux = strtotime($log['time']);
@@ -100,11 +100,9 @@ class MasterSite
         return $coins;
     }
 
-
     /**
-     * @use 投币视频
+     * @use 视频投币
      * @return bool
-     * @throws \Exception
      */
     protected static function coinAdd(): bool
     {
@@ -112,29 +110,34 @@ class MasterSite
             case 'false':
                 break;
             case 'true':
-                $av_num = getenv('ADD_COIN_AV_NUM');
-                $av_num = (int)$av_num;
-                if ($av_num == 0) {
-                    Log::warning('当前视频投币设置不正确,请检查配置文件!');
-                    die();
+                // 预计数量 失败默认0  避免损失
+                $estimate_num = intval(getenv('ADD_COIN_NUM') ?? 0);
+                // 库存数量
+                $stock_num = self::getCoin();
+                // 实际数量 处理硬币库存少于预计数量
+                $actual_num = intval($estimate_num > $stock_num ? $stock_num : $estimate_num) - self::coinLog();
+                Log::info("当前硬币库存 {$stock_num} 预计投币 {$estimate_num} 实际投币 {$actual_num}");
+                // 上限
+                if ($actual_num <= 0) {
+                    Log::info('今日投币上限已满!');
+                    break;
                 }
-                if ($av_num == 1) {
-                    $aid = !empty(getenv('ADD_COIN_AV')) ? getenv('ADD_COIN_AV') : self::getRandomAid();
+                // 稿件列表
+                if (gettype('ADD_COIN_MODE') =='random'){
+                    // 随机热门稿件榜单
+                    $aids = self::getDayRankingAids($actual_num);
+                }else{
+                    // 固定获取关注UP稿件榜单, 不足会随机补全
+                    $aids = self::getFollowUpAids($actual_num);
+                }
+                Log::info("获取稿件列表: ". implode(" ",$aids));
+                // 投币
+                foreach ($aids as $aid) {
                     self::reward($aid);
-                } else {
-                    $coins = $av_num - self::coinLog();
-                    if ($coins <= 0) {
-                        Log::info('今日投币上限已满!');
-                        break;
-                    }
-                    $aids = self::getDayRankingAids($av_num);
-                    foreach ($aids as $aid) {
-                        self::reward($aid);
-                    }
                 }
                 break;
             default:
-                Log::warning('当前视频投币设置不正确,请检查配置文件!');
+                Log::warning('当前视频投币设置不正确, 请检查配置文件!');
                 die();
                 break;
         }
@@ -149,10 +152,12 @@ class MasterSite
     private static function getRandomAid(): string
     {
         do {
-            $page = mt_rand(1, 1000);
-            $payload = [];
-            $url = "https://api.bilibili.com/x/web-interface/newlist?&pn={$page}&ps=1";
-            $raw = Curl::get($url, Sign::api($payload));
+            $url = "https://api.bilibili.com/x/web-interface/newlist";
+            $payload = [
+                'pn' => mt_rand(1, 1000),
+                'ps' => 1,
+            ];
+            $raw = Curl::get('other', $url, $payload);
             $de_raw = json_decode($raw, true);
             // echo "getRandomAid " . count($de_raw['data']['archives']) . PHP_EOL;
             // $aid = array_rand($de_raw['data']['archives'])['aid'];
@@ -163,23 +168,62 @@ class MasterSite
 
 
     /**
-     * @use 获取日榜AID
-     * @param $num
+     * @use 获取关注UP稿件列表
+     * @param int $num
      * @return array
-     * @throws \Exception
      */
-    private static function getDayRankingAids($num): array
+    private static function getFollowUpAids(int $num): array
     {
-        // day: 日榜1 三榜3 周榜7 月榜30
-        $payload = [];
         $aids = [];
         $rand_nums = [];
-        $url = "https://api.bilibili.com/x/web-interface/ranking?rid=0&day=1&type=1&arc_type=0";
-        $raw = Curl::get($url, Sign::api($payload));
+        $url = 'https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/dynamic_new';
+        $user_info = User::parseCookies();
+        $payload = [
+            'uid' => $user_info['uid'],
+            'type_list' => '8,512,4097,4098,4099,4100,4101'
+        ];
+        $headers = [
+            'origin' => 'https://t.bilibili.com',
+            'referer' => 'https://t.bilibili.com/pages/nav/index_new'
+        ];
+        $raw = Curl::get('pc', $url, $payload, $headers);
+        $de_raw = json_decode($raw, true);
+        foreach ($de_raw['data']['cards'] as $index => $card) {
+            if ($index >= $num) {
+                break;
+            }
+            array_push($aids, $card['desc']['rid']);
+        }
+        // 此处补全缺失
+        if (count($aids) < $num) {
+            $aids = array_merge($aids, self::getDayRankingAids($num - count($aids)));
+        }
+        return $aids;
+    }
+
+
+    /**
+     * @use 获取榜单稿件列表
+     * @param int $num
+     * @return array
+     */
+    private static function getDayRankingAids(int $num): array
+    {
+        // day: 日榜1 三榜3 周榜7 月榜30
+        $aids = [];
+        $rand_nums = [];
+        $url = "https://api.bilibili.com/x/web-interface/ranking";
+        $payload = [
+            'rid' => 0,
+            'day' => 1,
+            'type' => 1,
+            'arc_type' => 0
+        ];
+        $raw = Curl::get('other', $url, $payload);
         $de_raw = json_decode($raw, true);
         for ($i = 0; $i < $num; $i++) {
             while (true) {
-                $rand_num = random_int(1, 100);
+                $rand_num = mt_rand(1, 99);
                 if (in_array($rand_num, $rand_nums)) {
                     continue;
                 } else {
@@ -216,7 +260,7 @@ class MasterSite
             'Referer' => "https://www.bilibili.com/video/av{$av_info['aid']}",
             'User-Agent' => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.81 Safari/537.36",
         ];
-        $raw = Curl::post($url, Sign::api($payload), $headers);
+        $raw = Curl::post('pc', $url, $payload, $headers);
         $de_raw = json_decode($raw, true);
         if ($de_raw['code'] == 0) {
             Log::notice("主站任务: av{$av_info['aid']}分享成功!");
@@ -256,8 +300,7 @@ class MasterSite
             'Referer' => "https://www.bilibili.com/video/av{$av_info['aid']}",
             'User-Agent' => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.81 Safari/537.36",
         ];
-
-        $raw = Curl::post($url, Sign::api($payload), $headers);
+        $raw = Curl::post('pc', $url, $payload, $headers);
         $de_raw = json_decode($raw, true);
 
         if ($de_raw['code'] == 0) {
@@ -275,7 +318,7 @@ class MasterSite
                 "play_type" => "1",
                 'start_ts' => time()
             ];
-            $raw = Curl::post($url, Sign::api($payload), $headers);
+            $raw = Curl::post('pc', $url, $payload, $headers);
             $de_raw = json_decode($raw, true);
 
             if ($de_raw['code'] == 0) {
@@ -283,7 +326,7 @@ class MasterSite
                 $payload['played_time'] = $av_info['duration'] - 1;
                 $payload['play_type'] = 0;
                 $payload['start_ts'] = time();
-                $raw = Curl::post($url, Sign::api($payload), $headers);
+                $raw = Curl::post('pc', $url, $payload, $headers);
                 $de_raw = json_decode($raw, true);
                 if ($de_raw['code'] == 0) {
                     Log::notice("主站任务: av{$av_info['aid']}观看成功!");
@@ -304,8 +347,11 @@ class MasterSite
     {
         while (true) {
             $aid = self::getRandomAid();
-            $url = "https://api.bilibili.com/x/web-interface/view?aid={$aid}";
-            $raw = Curl::get($url);
+            $url = "https://api.bilibili.com/x/web-interface/view";
+            $payload = [
+                'aid' => $aid
+            ];
+            $raw = Curl::get('other', $url, $payload);
             $de_raw = json_decode($raw, true);
             if ($de_raw['code'] != 0) {
                 continue;
@@ -316,14 +362,32 @@ class MasterSite
             }
             $cid = $de_raw['data']['cid'];
             $duration = $de_raw['data']['duration'];
-            break;
+            return [
+                'aid' => $aid,
+                'cid' => $cid,
+                'duration' => $duration
+            ];
         }
+    }
 
-        return [
-            'aid' => $aid,
-            'cid' => $cid,
-            'duration' => $duration
+    /**
+     * @use 获取硬币数量
+     * @return int
+     */
+    private static function getCoin(): int
+    {
+        $url = 'https://account.bilibili.com/site/getCoin';
+        $payload = [];
+        $headers = [
+            'referer' => 'https://account.bilibili.com/account/coin',
         ];
+        $raw = Curl::get('pc', $url, $payload, $headers);
+        $de_raw = json_decode($raw, true);
+        // {"code":0,"status":true,"data":{"money":1707.9}}
+        if ($de_raw['code'] == 0 && isset($de_raw['data']['money'])) {
+            return floor($de_raw['data']['money']);
+        }
+        return 0;
     }
 
 }

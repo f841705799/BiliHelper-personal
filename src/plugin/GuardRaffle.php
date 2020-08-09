@@ -5,7 +5,7 @@
  *  Author: Lkeme
  *  License: The MIT License
  *  Email: Useri@live.cn
- *  Updated: 2019 ~ 2020
+ *  Updated: 2020 ~ 2021
  */
 
 namespace BiliHelper\Plugin;
@@ -53,28 +53,29 @@ class GuardRaffle extends BaseRaffle
                 continue;
             }
             // 获取等级名称
-            switch ($guard['privilege_type']) {
-                case 1:
-                    $raffle_name = '总督';
-                    break;
-                case 2:
-                    $raffle_name = '提督';
-                    break;
-                case 3:
-                    $raffle_name = '舰长';
-                    break;
-                default:
-                    $raffle_name = '舰队';
-                    break;
-            }
+//            switch ($guard['privilege_type']) {
+//                case 1:
+//                    $raffle_name = '总督';
+//                    break;
+//                case 2:
+//                    $raffle_name = '提督';
+//                    break;
+//                case 3:
+//                    $raffle_name = '舰长';
+//                    break;
+//                default:
+//                    $raffle_name = '舰队';
+//                    break;
+//            }
+
             // 推入列表
             $data = [
                 'room_id' => $room_id,
                 'raffle_id' => $guard['id'],
-                'raffle_name' => $raffle_name,
-                'wait' => time()
+                'raffle_name' => $guard['gift_name'],
+                'wait' => time() + mt_rand(5, 30)
             ];
-            Statistics::addPushList(self::ACTIVE_TITLE);
+            Statistics::addPushList($data['raffle_name']);
             array_push(self::$wait_list, $data);
         }
         return true;
@@ -102,14 +103,15 @@ class GuardRaffle extends BaseRaffle
                 'visit_id' => ''
             ];
             array_push($tasks, [
-                'payload' => Sign::api($payload),
+                'payload' => Sign::common($payload),
                 'source' => [
                     'room_id' => $raffle['room_id'],
-                    'raffle_id' => $raffle['raffle_id']
+                    'raffle_id' => $raffle['raffle_id'],
+                    'raffle_name' => $raffle['raffle_name']
                 ]
             ]);
         }
-        $results = Curl::asyncPost($url, $tasks);
+        $results = Curl::async('app', $url, $tasks);
         # print_r($results);
         return $results;
     }
@@ -125,11 +127,16 @@ class GuardRaffle extends BaseRaffle
             $data = $result['source'];
             $content = $result['content'];
             $de_raw = json_decode($content, true);
+            // {"code":-403,"data":null,"message":"访问被拒绝","msg":"访问被拒绝"}
             if (isset($de_raw['code']) && $de_raw['code'] == 0) {
-                Log::notice("房间 {$data['room_id']} 编号 {$data['raffle_id']} " . self::ACTIVE_TITLE . ": " . $de_raw['data']['award_name'] . "x" . $de_raw['data']['award_num']);
-                Statistics::addSuccessList(self::ACTIVE_TITLE);
+                Statistics::addSuccessList($data['raffle_name']);
+                Log::notice("房间 {$data['room_id']} 编号 {$data['raffle_id']} {$data['raffle_name']}: " . $de_raw['data']['award_name'] . "x" . $de_raw['data']['award_num']);
+                Statistics::addProfitList($data['raffle_name'] . '-' . $de_raw['data']['award_name'], $de_raw['data']['award_num']);
+            } elseif (isset($de_raw['msg']) && $de_raw['code'] == -403 && $de_raw['msg'] == '访问被拒绝') {
+                Log::debug("房间 {$data['room_id']} 编号 {$data['raffle_id']} {$data['raffle_name']}: {$de_raw['msg']}");
+                self::pauseLock();
             } else {
-                Log::notice("房间 {$data['room_id']} 编号 {$data['raffle_id']} " . self::ACTIVE_TITLE . ": {$de_raw['msg']}");
+                Log::notice("房间 {$data['room_id']} 编号 {$data['raffle_id']} {$data['raffle_name']}: " . isset($de_raw['msg']) ? $de_raw['msg'] : $de_raw);
             }
         }
     }

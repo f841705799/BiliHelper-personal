@@ -2,7 +2,7 @@
 <p align="center"><img width="300px" src="https://i.loli.net/2018/04/20/5ad97bd395912.jpeg"></p>
 
 <p align="center">
-<img src="https://img.shields.io/badge/version-0.1.0.200128 alpha-green.svg?longCache=true&style=for-the-badge">
+<img src="https://img.shields.io/badge/version-0.6.5.200808 alpha-green.svg?longCache=true&style=for-the-badge">
 <img src="https://img.shields.io/badge/license-mit-blue.svg?longCache=true&style=for-the-badge">
 </p>
 
@@ -11,35 +11,39 @@
 
 B 站直播实用脚本
 
-
-
 ## 功能组件
 
 |plugin              |version             |description         |
 |--------------------|--------------------|--------------------|
-|Login               |19.12.27            |账号登录            |
-|Sleep               |19.12.27            |休眠控制            |
-|MasterSite          |19.12.27            |主站助手            |
-|Daily               |19.12.27            |每日礼包            |
-|Heart               |19.12.27            |双端心跳            |
-|Task                |19.12.27            |每日任务            |
-|Silver              |19.12.27            |银瓜子宝箱          |
-|Barrage             |19.12.27            |活跃弹幕            |
-|Silver2Coin         |19.12.27            |银瓜子换硬币        |
-|GiftSend            |19.12.27            |礼物赠送            |
-|GroupSignIn         |19.12.27            |友爱社签到          |
-|GiftHeart           |19.12.27            |心跳礼物            |          
-|MaterialObject      |19.12.27            |实物抽奖            |
-|AloneTcpClient      |19.12.27            |独立监控            |
-|ZoneTcpClient       |19.12.27            |分区监控            |
-|StormRaffle         |20.01.03            |节奏风暴            |
-|GiftRaffle          |20.01.28           |活动礼物            |
-|PkRaffle            |20.01.03            |大乱斗              |
-|GuardRaffle         |20.01.03            |舰长总督            |
-|AnchorRaffle        |20.01.11            |天选时刻            |
-|AwardRecord         |19.12.27            |获奖通知            |
-|Statistics          |19.12.27            |数据统计            |
-
+|Login               |20.08.08            |账号登录            |
+|Schedule            |20.08.08            |休眠控制            |
+|MasterSite          |20.08.08            |主站助手            |
+|Daily               |20.08.08            |每日礼包            |
+|Heart               |20.08.08            |双端心跳            |
+|Task                |20.08.08            |每日任务            |
+|Silver              |20.08.08            |银瓜子宝箱          |
+|Barrage             |20.08.08            |活跃弹幕            |
+|Silver2Coin         |20.08.08            |银瓜子换硬币        |
+|GiftSend            |20.08.08            |礼物赠送            |
+|Judge               |20.08.08            |风纪                |
+|GroupSignIn         |20.08.08            |友爱社签到          |
+|ManGa               |20.08.08            |漫画签到分享        |
+|Match               |20.08.08            |赛事签到分享        |
+|GiftHeart           |20.08.08            |心跳礼物            |          
+|MaterialObject      |20.08.08            |实物抽奖            |
+|AloneTcpClient      |20.08.08            |独立监控            |
+|ZoneTcpClient       |20.08.08            |分区监控            |
+|StormRaffle         |20.08.08            |节奏风暴            |
+|GiftRaffle          |20.08.08            |活动礼物            |
+|PkRaffle            |20.08.08            |大乱斗              |
+|GuardRaffle         |20.08.08            |舰长总督            |
+|AnchorRaffle        |20.08.08            |天选时刻            |
+|AwardRecord         |20.08.08            |获奖通知            |
+|Statistics          |20.08.08            |数据统计            |
+|Competition         |20.08.08            |赛事竞猜            |
+|SmallHeart          |20.08.08            |小心心              |
+|ActivityLottery     |20.08.08            |主站活动            |
+     
 ## 打赏赞助
 
 ![](https://i.loli.net/2019/07/13/5d2963e5cc1eb22973.png)
@@ -97,12 +101,15 @@ $ cp user.conf.example user.conf
 ```
 $ composer install
 ```
- 3. 按照说明修改配置文件 `user.conf`，只需填写帐号密码即可
+ 3. 按照说明修改配置文件 `user.conf`
+ ```
+ # 默认只需填写帐号密码，按需求开启其他功能即可
+ ```
  4. 运行测试
 ```
 $ php index.php
 ```
-> 以下是`多开方案`，单个账户可以无视
+> 以下是`多账户多开方案`，单个账户可以无视
  5. 复制一份example配置文件，修改账号密码即可
  ```
  $ php index.php example.conf
@@ -122,7 +129,7 @@ $ php index.php
 - 通过环境变量进行传入
 
 ```shell script
-  docker run -itd --rm -e USER_NAME=你的B站登陆账号 -e USER_PASSWORD=你的B站密码 zsnmwy/bilihelper-personal
+  docker run -itd --rm -e USER_NAME=你的B站登录账号 -e USER_PASSWORD=你的B站密码 zsnmwy/bilihelper-personal
 ```
 
 - 通过配置文件进行传入
@@ -146,14 +153,14 @@ docker run -itd --rm -v /path/to/your/confFileName.conf:/app/conf/user.conf zsnm
 - 注意: Docker镜像已经包含了所有所需的运行环境，无需在本地环境弄composer。每次启动容器时，都会与项目进行同步以确保版本最新。
 
 ## 升级指南
-
+> 注意新版本的配置文件是否变动，则需要重新覆盖配置文件，并重新填写设置
  1. 进入项目目录
 ```
 $ cd BiliHelper-personal
 ```
  2. 拉取最新代码
 ```
-$ git pull
+$ git pull  
 ```
  3. 更新依赖库
 ```

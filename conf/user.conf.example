@@ -6,6 +6,9 @@
 APP_USER=
 APP_PASS=
 
+# 登录模式|[1.账密模式 2.短信验证码模式 3.行为验证码模式(暂未开放)]
+LOGIN_MODE=1
+
 # 令牌(自动生成)
 ACCESS_TOKEN=
 REFRESH_TOKEN=
@@ -27,8 +30,9 @@ USE_GUARD=true
 # 大乱斗
 USE_PK=true
 
-# 天选时刻|抽取类型(0: 无限制; 1: 关注主播; 2: 粉丝勋章; 3大航海； 4用户等级；5主站等级)|过滤关键词|逗号分隔
+# 天选时刻|抽取类型(0: 无限制; 1: 关注主播; 2: 粉丝勋章; 3大航海； 4用户等级；5主站等级)|自动取关(测试功能)|过滤关键词|逗号分隔
 USE_ANCHOR=false
+ANCHOR_UNFOLLOW=false
 ANCHOR_TYPE=0,1
 ANCHOR_FILTER_WORDS=
 
@@ -48,40 +52,54 @@ USE_DANMU=true
 DANMU_ROOMID=9522051
 DANMU_CONTENT=
 
-# 视频投币|投币稿件数(每日任务最大5)|自定义稿件ID,空则随机(AV_NUM=1生效)
+# 视频投币|random(随机热门)/fixed(关注列表)|投币稿件数(每日任务最大5)
 USE_ADD_COIN=false
-ADD_COIN_AV_NUM=1
-ADD_COIN_AV=33492180
+ADD_COIN_MODE=random
+ADD_COIN_NUM=5
 
 # 休眠时间|时间区间(0-23)|逗号分隔
 USE_SLEEP=true
 SLEEP_SECTION=2,3,4,5,6
+
+# 漫画助手
+USE_MANGA=false
+
+# 赛事助手
+USE_MATCH=false
+
+# 活动助手
+USE_ACTIVITY=false
+
+# 破产机|每日竞猜次数|每次竞猜硬币(1-10)|下注(1.压大,2.压小,3.随机)
+USE_COMPETITION=false
+COMPET_MAX_NUM=20
+COMPET_MAX_COIN=10
+COMPET_STAKE=1
+
+# 风纪委员
+USE_JUDGE=false
 
 #######################
 #       基础设置       #
 #######################
 
 # 独立推送服务(主)|主备冲突
-USE_ALONE_SERVER=true
-ALONE_SERVER_ADDR=tcp://47.102.120.84:10010
-ALONE_SERVER_KEY=,*(?PVl]nIbo35sB
+USE_ALONE_SERVER=false
+ALONE_SERVER_ADDR=tcp://livecmt-1.mudew.com:10088
+ALONE_SERVER_KEY=
 
 # 分区推送服务(备)|主备冲突
-USE_ZONE_SERVER=false
+USE_ZONE_SERVER=true
 ZONE_SERVER_ADDR=tcp://broadcastlv.chat.bilibili.com:2243/sub
-
-# 切换HTTPS|为真则使用https协议
-USE_HTTPS=true
-
-# 是否使用代理(前提保证有效代理)
-USE_PROXY=false
-PROXY_IP=127.0.0.1
-PROXY_PORT=8888
 
 # SERVER酱|令牌KEY|过滤关键词|逗号分隔
 USE_SC=false
 SC_KEY=
 SC_FILTER_WORDS=
+
+# 小心心|加密服务器(开源)|
+USE_HEARTBEAT=true
+ENC_SERVER=http://116.85.43.27:3000/enc
 
 #######################
 #       房间设置       #
@@ -98,6 +116,17 @@ ROOM_LIST=9522051
 
 # 弹幕监控房间(为空则随机)
 SOCKET_ROOM_ID=9522051
+
+#######################
+#       网络设置       #
+#######################
+
+# 验证SSL证书|请求时验证SSL证书行为
+VERIFY_SSL=true
+
+# 是否使用代理|(http\https)
+USE_PROXY=false
+NETWORK_PROXY=http://127.0.0.1:8888
 
 #######################
 #       程序设置       #

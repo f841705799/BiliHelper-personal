@@ -5,7 +5,7 @@
  *  Author: Lkeme
  *  License: The MIT License
  *  Email: Useri@live.cn
- *  Updated: 2019 ~ 2020
+ *  Updated: 2020 ~ 2021
  */
 
 namespace BiliHelper\Plugin;
@@ -23,6 +23,7 @@ class Barrage
         if (self::getLock() > time() || getenv('USE_DANMU') == 'false') {
             return;
         }
+        self::setPauseStatus();
         $room_id = empty(getenv('DANMU_ROOMID')) ? Live::getUserRecommend() : Live::getRealRoomID(getenv('DANMU_ROOMID'));
         $msg = empty(getenv('DANMU_CONTENT')) ? self::getMsgInfo() : getenv('DANMU_CONTENT');
 
@@ -32,7 +33,7 @@ class Barrage
         ];
 
         if (self::privateSendMsg($info)) {
-            self::setLock(3600);
+            self::setLock(mt_rand(20, 40) * 60);
             return;
         }
 
@@ -42,7 +43,7 @@ class Barrage
 
     /**
      * @use 获取随机弹幕
-     * @return \Exception|false|mixed|string
+     * @return \Exception|false|mixed|string|null
      */
     private static function getMsgInfo()
     {
@@ -53,15 +54,12 @@ class Barrage
          */
         $punctuations = ['，', ',', '。', '!', '.', ';', '——'];
         $apis = [
-            'https://api.lwl12.com/hitokoto/v1?encode=realjso',
             'https://api.ly522.com/yan.php?format=text',
             'https://v1.hitokoto.cn/?encode=text',
             'https://api.jysafe.cn/yy/',
-            'https://m.mom1.cn/api/yan/api.php',
             'https://api.ooopn.com/yan/api.php?type=text',
             'https://api.imjad.cn/hitokoto/',
             'https://www.ly522.com/hitokoto/',
-            'https://www.tddiao.online/word/',
             'https://api.guoch.xyz/',
             'http://www.ooomg.cn/dutang/',
             'https://api.gushi.ci/rensheng.txt',
@@ -72,7 +70,7 @@ class Barrage
         shuffle($apis);
         try {
             foreach ($apis as $url) {
-                $data = Curl::singleRequest('get', $url);
+                $data = Curl::request('get', $url);
                 if (is_null($data)) continue;
                 foreach ($punctuations as $punctuation) {
                     if (strpos($data, $punctuation)) {
@@ -91,26 +89,25 @@ class Barrage
     /**
      * @use 弹幕通用模块
      * @param $info
-     * @return bool|string
+     * @return array
      */
-    private static function sendMsg($info)
+    private static function sendMsg($info): array
     {
         $user_info = User::parseCookies();
-        $raw = Curl::get('https://api.live.bilibili.com/room/v1/Room/room_init?id=' . $info['roomid']);
-        $de_raw = json_decode($raw, true);
-
+        $url = 'https://api.live.bilibili.com/msg/send';
+        $data = Live::getRoomInfo($info['roomid']);
         $payload = [
             'color' => '16777215',
             'fontsize' => 25,
             'mode' => 1,
             'msg' => $info['content'],
             'rnd' => 0,
-            'roomid' => $de_raw['data']['room_id'],
+            'roomid' => $data['data']['room_id'],
             'csrf' => $user_info['token'],
             'csrf_token' => $user_info['token'],
         ];
-
-        return Curl::post('https://api.live.bilibili.com/msg/send', Sign::api($payload));
+        $raw = Curl::post('app', $url, Sign::common($payload));
+        return json_decode($raw, true) ?? ['code' => 404, 'msg' => '上层数据为空!'];
     }
 
     /**
@@ -118,21 +115,16 @@ class Barrage
      * @param $info
      * @return bool
      */
-    private static function privateSendMsg($info)
+    private static function privateSendMsg($info): bool
     {
-        //TODO 暂时性功能 有需求就修改
-        $raw = self::sendMsg($info);
-        $de_raw = json_decode($raw, true);
-        if ($de_raw['code'] == 1001) {
-            Log::warning($de_raw['msg']);
-            return false;
-        }
-        if (!$de_raw['code']) {
+        //TODO 短期功能 有需求就修改
+        $response = self::sendMsg($info);
+        if (isset($response['code']) && $response['code'] == 0) {
             Log::info('活跃弹幕发送成功!');
             return true;
+        } else {
+            Log::warning("活跃代码发送失败, CODE -> {$response['code']} MSG -> {$response['msg']} ");
+            return false;
         }
-        Log::error("活跃弹幕发送失败！, {$de_raw['msg']}");
-
-        return false;
     }
 }

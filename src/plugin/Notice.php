@@ -5,7 +5,7 @@
  *  Author: Lkeme
  *  License: The MIT License
  *  Email: Useri@live.cn
- *  Updated: 2019 ~ 2020
+ *  Updated: 2020 ~ 2021
  */
 
 namespace BiliHelper\Plugin;
@@ -68,6 +68,12 @@ class Notice
     {
         $now_time = date('Y-m-d H:i:s');
         switch (self::$type) {
+            case 'update':
+                $info = [
+                    'title' => '程序更新通知',
+                    'content' => '[' . $now_time . ']' . ' 用户: ' . self::$uname . ' 程序更新通知' . self::$result,
+                ];
+                break;
             case 'anchor':
                 $info = [
                     'title' => '天选时刻获奖记录',
@@ -106,8 +112,20 @@ class Notice
                 break;
             case 'banned':
                 $info = [
-                    'title' => '账号封禁',
-                    'content' => '[' . $now_time . ']' . ' 用户: ' . self::$uname . ' 账号被封禁: 程序开始睡眠，凌晨自动唤醒，距离唤醒还有' . self::$result . '小时',
+                    'title' => '任务小黑屋',
+                    'content' => '[' . $now_time . ']' . ' 用户: ' . self::$uname . ' 小黑屋: ' . self::$result,
+                ];
+                break;
+            case 'error':
+                $info = [
+                    'title' => '程序错误',
+                    'content' => '[' . $now_time . ']' . ' 用户: ' . self::$uname . ' 程序运行错误: ' . self::$result,
+                ];
+                break;
+            case 'key_expired':
+                $info = [
+                    'title' => '监控KEY异常',
+                    'content' => '[' . $now_time . ']' . ' 用户: ' . self::$uname . ' 监控KEY到期或者错误，请及时查错或续期后重试哦~',
                 ];
                 break;
             default:
@@ -130,7 +148,7 @@ class Notice
     private static function scSend(array $info)
     {
         $url = "https://sc.ftqq.com/" . self::$sckey . ".send?text=" . urlencode($info['title']) . "&desp=" . urlencode($info['content']);
-        $data = Curl::singleRequest('get', $url);
+        $data = Curl::request('get', $url);
         if (is_null($data)) {
             Log::warning('Server酱推送信息失败,请检查!');
         };

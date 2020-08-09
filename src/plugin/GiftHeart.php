@@ -5,7 +5,7 @@
  *  Author: Lkeme
  *  License: The MIT License
  *  Email: Useri@live.cn
- *  Updated: 2019 ~ 2020
+ *  Updated: 2020 ~ 2021
  */
 
 namespace BiliHelper\Plugin;
@@ -23,6 +23,7 @@ class GiftHeart
         if (self::getLock() > time()) {
             return;
         }
+        self::setPauseStatus();
         if (self::giftHeart()) {
             self::setLock(60 * 60);
             return;
@@ -37,18 +38,26 @@ class GiftHeart
      */
     private static function giftHeart(): bool
     {
+        $url = 'https://api.live.bilibili.com/gift/v2/live/heart_gift_receive';
         $payload = [
             'roomid' => getenv('ROOM_ID'),
         ];
-        $raw = Curl::get('https://api.live.bilibili.com/gift/v2/live/heart_gift_receive', Sign::api($payload));
+        $raw = Curl::get('app', $url, Sign::common($payload));
         $de_raw = json_decode($raw, true);
+
+        // {"code":400,"msg":"访问被拒绝","message":"访问被拒绝","data":[]}
+        if (isset($de_raw['msg']) && $de_raw['code'] == 400 && $de_raw['msg'] == '访问被拒绝') {
+            self::pauseLock();
+            return false;
+        }
 
         if ($de_raw['code'] == -403) {
             Log::info($de_raw['msg']);
             $payload = [
                 'ruid' => 17561885,
             ];
-            Curl::get('https://api.live.bilibili.com/eventRoom/index', Sign::api($payload));
+            $url = 'https://api.live.bilibili.com/eventRoom/index';
+            Curl::get('app', $url, Sign::common($payload));
             return true;
         }
 

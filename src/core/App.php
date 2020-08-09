@@ -5,14 +5,15 @@
  *  Author: Lkeme
  *  License: The MIT License
  *  Email: Useri@live.cn
- *  Updated: 2019 ~ 2020
+ *  Updated: 2020 ~ 2021
  */
 
 namespace BiliHelper\Core;
 
-use Amp\Delayed;
 use Amp\Loop;
 use function Amp\asyncCall;
+use BiliHelper\Plugin\Notice;
+
 
 class App
 {
@@ -21,9 +22,7 @@ class App
      */
     public function __construct()
     {
-        set_time_limit(0);
-        header("Content-Type:text/html; charset=utf-8");
-        date_default_timezone_set('Asia/Shanghai');
+        (new Env())->inspect_configure()->inspect_extension();
     }
 
     /**
@@ -34,7 +33,6 @@ class App
      */
     public function load($app_path, $load_file = 'user.conf')
     {
-        // define('APP_PATH', dirname(__DIR__));
         define('APP_PATH', $app_path);
         Config::load($load_file);
         return $this;
@@ -48,11 +46,16 @@ class App
     {
         asyncCall(function () use ($taskName) {
             while (true) {
-                call_user_func(array('BiliHelper\Plugin\\' . $taskName, 'run'), []);
-                yield new Delayed(1000);
+                try {
+                    call_user_func(array('BiliHelper\Plugin\\' . $taskName, 'run'), []);
+                } catch (\Throwable  $e) {
+                    $error_msg = "MSG: {$e->getMessage()} CODE: {$e->getCode()} FILE: {$e->getFile()} LINE: {$e->getLine()}";
+                    Log::error($error_msg);
+                    // Notice::push('error', $error_msg);
+                }
+                yield call_user_func(array('BiliHelper\Plugin\\' . $taskName, 'Delayed'), []);
             }
         });
-
     }
 
     /**
@@ -62,17 +65,23 @@ class App
     {
         $plugins = [
             'Login',
-            'Sleep',
+            'Schedule',
             'MasterSite',
             'Daily',
+            'ManGa',
+            'Match',
+            'ActivityLottery',
+            'Competition',
             'Heart',
             'Task',
             'Silver',
             'Barrage',
             'Silver2Coin',
+            'Judge',
             'GiftSend',
             'GroupSignIn',
             'GiftHeart',
+            'SmallHeart',
             'MaterialObject',
             'AloneTcpClient',
             'ZoneTcpClient',

@@ -5,7 +5,7 @@
  *  Author: Lkeme
  *  License: The MIT License
  *  Email: Useri@live.cn
- *  Updated: 2019 ~ 2020
+ *  Updated: 2020 ~ 2021
  */
 
 namespace BiliHelper\Plugin;
@@ -24,7 +24,7 @@ class Silver2Coin
             return;
         }
         if (self::appSilver2coin() && self::pcSilver2coin()) {
-            self::setLock(24 * 60 * 60);
+            self::setLock(self::timing(10));
             return;
         }
         self::setLock(3600);
@@ -37,9 +37,10 @@ class Silver2Coin
      */
     protected static function appSilver2coin(): bool
     {
-        sleep(1);
+        sleep(0.5);
+        $url = 'https://api.live.bilibili.com/AppExchange/silver2coin';
         $payload = [];
-        $raw = Curl::get('https://api.live.bilibili.com/AppExchange/silver2coin', Sign::api($payload));
+        $raw = Curl::get('app', $url, Sign::common($payload));
         $de_raw = json_decode($raw, true);
 
         if (!$de_raw['code'] && $de_raw['msg'] == '兑换成功') {
@@ -60,18 +61,17 @@ class Silver2Coin
      */
     protected static function pcSilver2coin(): bool
     {
-        sleep(1);
+        sleep(0.5);
         $payload = [];
         $url = "https://api.live.bilibili.com/exchange/silver2coin";
         $url = "https://api.live.bilibili.com/pay/v1/Exchange/silver2coin";
-        
-        $raw = Curl::get($url, Sign::api($payload));
+
+        $raw = Curl::get('pc', $url, $payload);
         $de_raw = json_decode($raw, true);
         if ($de_raw['code'] == -403) {
             return false;
         }
         Log::info('[PC]银瓜子兑换硬币: ' . $de_raw['msg']);
-        // TODO
         return true;
     }
 }

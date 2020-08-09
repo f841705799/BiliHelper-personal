@@ -5,7 +5,7 @@
  *  Author: Lkeme
  *  License: The MIT License
  *  Email: Useri@live.cn
- *  Updated: 2019 ~ 2020
+ *  Updated: 2020 ~ 2021
  */
 
 namespace BiliHelper\Core;
@@ -13,6 +13,7 @@ namespace BiliHelper\Core;
 use Monolog\Logger;
 use Monolog\Handler\StreamHandler;
 use Bramus\Monolog\Formatter\ColoredLineFormatter;
+use function GuzzleHttp\Psr7\str;
 
 class Log
 {
@@ -28,7 +29,7 @@ class Log
 
     protected static function configureInstance()
     {
-        $logger = new Logger('Bilibili');
+        $logger = new Logger('BH');
         $handler = new StreamHandler('php://stdout', getenv('APP_DEBUG') == 'true' ? Logger::DEBUG : Logger::INFO);
         $handler->setFormatter(new ColoredLineFormatter());
         $logger->pushHandler($handler);
@@ -104,7 +105,7 @@ class Log
             $url = str_replace('{account}', self::prefix(), getenv('APP_CALLBACK'));
             $url = str_replace('{level}', $level, $url);
             $url = str_replace('{message}', urlencode($message), $url);
-            Curl::get($url);
+            Curl::request('get', str_replace(' ', '%20', $url));
         }
     }
 }

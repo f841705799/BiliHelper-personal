@@ -5,18 +5,20 @@
  *  Author: Lkeme
  *  License: The MIT License
  *  Email: Useri@live.cn
- *  Updated: 2019 ~ 2020
+ *  Updated: 2020 ~ 2021
  */
 
 namespace BiliHelper\Plugin;
 
-use BiliHelper\Core\Curl;
+
 use BiliHelper\Core\Log;
+use BiliHelper\Core\Curl;
 use BiliHelper\Util\TimeLock;
 
 class GiftSend
 {
     use TimeLock;
+
     protected static $uid = 0;
     protected static $tid = 0;
     protected static $r_uid = 0;
@@ -28,7 +30,7 @@ class GiftSend
 
     public static function run()
     {
-        if (self::getLock() > time()) {
+        if (self::getLock() > time() || !self::inTime('23:50:00', '23:59:50')) {
             return;
         }
         if (!self::$uid) {
@@ -41,7 +43,12 @@ class GiftSend
         self::$room_list = [];
         self::$medal_list = [];
         self::$tid = 0;
-        self::setLock(5 * 60);
+        // 如果在每日最后5分钟内 就50s执行一次 否则 第二天固定时间执行
+        if (self::inTime('23:52:00', '23:59:59')) {
+            self::setLock(60);
+        } else {
+            self::setLock(self::timing(23, 55));
+        }
     }
 
 
@@ -124,7 +131,8 @@ class GiftSend
     {
         $new_bag_list = [];
         $payload = [];
-        $data = Curl::get('https://api.live.bilibili.com/gift/v2/gift/bag_list', Sign::api($payload));
+        $url = 'https://api.live.bilibili.com/gift/v2/gift/bag_list';
+        $data = Curl::get('app', $url, Sign::common($payload));
         $data = json_decode($data, true);
         if (isset($data['code']) && $data['code']) {
             Log::warning('背包查看失败!', ['msg' => $data['message']]);
@@ -133,7 +141,9 @@ class GiftSend
         if (isset($data['data']['list'])) {
             $bag_list = $data['data']['list'];
             if (count($bag_list)) {
-                array_multisort(array_column($bag_list, "gift_id"), SORT_DESC, $bag_list);
+                // 按过期时间 升序
+                // array_multisort(array_column($bag_list, "gift_id"), SORT_DESC, $bag_list);
+                array_multisort(array_column($bag_list, "expire_at"), SORT_ASC, $bag_list);
             }
             foreach ($bag_list as $vo) {
                 // 去除永久礼物
@@ -170,24 +180,22 @@ class GiftSend
     protected static function getMedalList()
     {
         self::$medal_list = [];
-        Log::info('正在获取勋章列表...');
-        $payload = [];
-        $data = Curl::get('https://api.live.bilibili.com/i/api/medal?page=1&pageSize=25', Sign::api($payload));
-        $data = json_decode($data, true);
-        if (isset($data['code']) && $data['code']) {
-            Log::warning('获取勋章列表失败!', ['msg' => $data['message']]);
-            return;
+        $data = Live::fetchMedalList();
+        $fans_medals = [];
+        foreach ($data as $vo) {
+            if (!isset($vo['roomid'])) continue;
+            $fans_medals[(string)$vo['roomid']] = $vo;
         }
-        Log::info('勋章列表获取成功!');
-        if (isset($data['data']['fansMedalList'])) {
-            foreach ($data['data']['fansMedalList'] as $vo) {
-                if (in_array($vo['roomid'], self::$room_list) && ($vo['day_limit'] - $vo['today_feed'])) {
-                    self::$medal_list[(string)$vo['roomid']] = ($vo['day_limit'] - $vo['today_feed']);
-//                    $data = [
-//                        $vo['roomid'] => ($vo['day_limit'] - $vo['today_feed'])
-//                    ];
-//                    array_push(self::$medal_list, $data);
-                }
+        // 基于配置
+        foreach (self::$room_list as $room_id) {
+            // 配置是否存在获取
+            if (!array_key_exists((string)$room_id, $fans_medals)) {
+                continue;
+            }
+            $vo = $fans_medals[(string)$room_id];
+            // 是否还需要投喂
+            if ($vo['day_limit'] - $vo['today_feed']) {
+                self::$medal_list[(string)$vo['roomid']] = ($vo['day_limit'] - $vo['today_feed']);
             }
         }
     }
@@ -198,8 +206,9 @@ class GiftSend
      */
     protected static function getUserInfo()
     {
+        $url = 'https://api.live.bilibili.com/xlive/web-ucenter/user/get_user_info';
         $payload = [];
-        $data = Curl::get('https://api.live.bilibili.com/xlive/web-ucenter/user/get_user_info', Sign::api($payload));
+        $data = Curl::get('app', $url, Sign::common($payload));
         $data = json_decode($data, true);
         if (isset($data['code']) && $data['code']) {
             Log::warning('获取帐号信息失败!', ['msg' => $data['message']]);
@@ -216,11 +225,8 @@ class GiftSend
     protected static function getRoomInfo()
     {
         Log::info('正在生成直播间信息...');
-        $payload = [
-            'id' => empty(self::$tid) ? getenv('ROOM_ID') : self::$tid,
-        ];
-        $data = Curl::get('https://api.live.bilibili.com/room/v1/Room/room_init', Sign::api($payload));
-        $data = json_decode($data, true);
+        $room_id = empty(self::$tid) ? getenv('ROOM_ID') : self::$tid;
+        $data = Live::getRoomInfo($room_id);
         if (isset($data['code']) && $data['code']) {
             Log::warning('获取主播房间号失败!', ['msg' => $data['message']]);
             Log::warning('清空礼物功能禁用!');
@@ -260,6 +266,7 @@ class GiftSend
      */
     protected static function sendGift(array $value, int $amt)
     {
+        $url = 'https://api.live.bilibili.com/gift/v2/live/bag_send';
         $payload = [
             'coin_type' => 'silver',
             'gift_id' => $value['gift_id'],
@@ -271,7 +278,7 @@ class GiftSend
             'data_behavior_id' => '',
             'bag_id' => $value['bag_id']
         ];
-        $data = Curl::post('https://api.live.bilibili.com/gift/v2/live/bag_send', Sign::api($payload));
+        $data = Curl::post('app', $url, Sign::common($payload));
         $data = json_decode($data, true);
         if (isset($data['code']) && $data['code']) {
             Log::warning('送礼失败!', ['msg' => $data['message']]);
