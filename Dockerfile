@@ -23,7 +23,7 @@ WORKDIR /app
 RUN docker-php-ext-install sockets
 
 RUN apk add --no-cache git && \
-    git clone https://github.com/lkeme/BiliHelper-personal.git --depth=1 /app && \
+    git clone https://github.com.cnpmjs.org/lkeme/BiliHelper-personal.git --depth=1 /app && \
     php -r "copy('https://install.phpcomposer.com/installer', 'composer-setup.php');" && \
     php composer-setup.php && \
     php composer.phar install && \
